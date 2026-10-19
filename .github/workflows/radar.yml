@@ -1,0 +1,27 @@
+name: Ejecutar Radar de Cuidalos
+
+on:
+  workflow_dispatch: # Permite ejecutarlo manualmente
+  schedule:
+    - cron: '0 8 * * *' # Se ejecuta todos los días a las 8:00 AM
+
+jobs:
+  analizar_perfiles:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar codigo
+        uses: actions/checkout@v3
+      
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          
+      - name: Instalar dependencias
+        run: pip install requests
+        
+      - name: Ejecutar el Radar
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          VERCEL_ALERT_WEBHOOK: ${{ secrets.VERCEL_ALERT_WEBHOOK }}
+        run: python radar.py
