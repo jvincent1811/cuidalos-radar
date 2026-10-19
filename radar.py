@@ -11,7 +11,7 @@ id_niño = "niño_123"
 
 def analizar_con_huggingface(texto):
     print(f"Analizando texto: {texto}")
-    API_URL = "https://api-inference.huggingface.co/models/tanaos/tanaos-guardrail-spanish"
+    API_URL = "https://router.huggingface.co/hf-inference/models/tanaos/tanaos-guardrail-spanish"
     headers = {"Authorization": f"Bearer {HF_TOKEN}"}
     payload = {"inputs": texto}
     
