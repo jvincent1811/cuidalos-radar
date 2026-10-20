@@ -1,4 +1,0 @@
-Flask
-transformers
-torch
-requests
