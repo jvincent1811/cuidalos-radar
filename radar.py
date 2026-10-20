@@ -11,7 +11,8 @@ HF_TOKEN = os.environ.get("HF_TOKEN")
 APIFY_TOKEN = os.environ.get("APIFY_TOKEN")
 
 def analizar_texto(texto):
-    if not texto or texto == "no disponible" or texto == "error" or texto == "Perfil sin biografía": return False
+    if not texto or texto == "no disponible" or texto == "error" or texto == "Perfil sin biografía": 
+        return False
     
     print(f"Analizando texto con IA: '{texto[:50]}...'")
     API_URL = "https://router.huggingface.co/hf-inference/models/tanaos/tanaos-guardrail-spanish"
@@ -64,14 +65,12 @@ def main():
     except:
         datos = {}
     
-    if not datos:
-        print("Ejecución manual detectada. Usando valores de prueba.")
-        datos = {
-            "id_niño": "12345678-1234-1234-1234-123456789012",
-            "instagram": "iJesusbernal"
-        }
+    # Si no hay datos (ejecución manual sin payload), nos detenemos para no gastar créditos
+    if not datos or not datos.get("id_niño"):
+        print("No se recibieron datos válidos desde Bilt. Cancelando análisis para ahorrar créditos.")
+        return
 
-    id_niño = datos.get("id_niño", "desconocido")
+    id_niño = datos.get("id_niño")
     usuario_ig = datos.get("instagram", "")
     
     redes = {
@@ -91,6 +90,7 @@ def main():
             print(f"¡ALERTA en {red}!")
             alertas_detectadas.append(red)
 
+    # 1. Enviar alertas si hay riesgo
     if alertas_detectadas:
         alerta = {
             "id_niño": id_niño,
@@ -103,8 +103,8 @@ def main():
     else:
         print("Perfiles seguros. No se envía alerta de riesgo.")
 
+    # 2. Reportar finalización a Bilt (Para el semáforo)
     print("Reportando estado final a Bilt...")
-    # CORRECCIÓN AQUÍ: strftime para quitar milisegundos y dejar el formato exacto
     fecha_utc = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     
     status_bilt = {
