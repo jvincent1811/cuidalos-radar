@@ -1,14 +1,17 @@
 import os
 import requests
 import json
+from datetime import datetime, timezone
 
 VERCEL_WEBHOOK = os.environ.get("VERCEL_ALERT_WEBHOOK")
+RADAR_ANALISIS_WEBHOOK = os.environ.get("RADAR_ANALISIS_WEBHOOK")
+RADAR_WEBHOOK_SECRET = os.environ.get("RADAR_WEBHOOK_SECRET")
 RADAR_PAYLOAD = os.environ.get("RADAR_PAYLOAD", "{}")
 HF_TOKEN = os.environ.get("HF_TOKEN")
 APIFY_TOKEN = os.environ.get("APIFY_TOKEN")
 
 def analizar_texto(texto):
-    if not texto or texto == "no disponible" or texto == "error": return False
+    if not texto or texto == "no disponible" or texto == "error" or texto == "Perfil sin biografía": return False
     
     print(f"Analizando texto con IA: '{texto[:50]}...'")
     API_URL = "https://router.huggingface.co/hf-inference/models/tanaos/tanaos-guardrail-spanish"
@@ -34,8 +37,6 @@ def obtener_biografia_instagram(usuario):
     
     url_run = "https://api.apify.com/v2/acts/apify~instagram-profile-scraper/run-sync-get-dataset-items"
     headers = {"Authorization": f"Bearer {APIFY_TOKEN}", "Content-Type": "application/json"}
-    
-    # CORRECCIÓN: Apify requiere el campo "usernames" (en plural y como lista)
     payload = {"usernames": [usuario]}
     
     try:
@@ -46,12 +47,13 @@ def obtener_biografia_instagram(usuario):
             data = r.json()
             print(f"Diagnóstico Apify - Elementos recibidos: {len(data)}")
             if isinstance(data, list) and len(data) > 0:
-                bio = data[0].get('biography', '')
-                return bio if bio else "Perfil sin biografía"
+                perfil = data[0]
+                bio = perfil.get('biography') or perfil.get('bio') or perfil.get('description')
+                if bio:
+                    return bio
+                return "Perfil sin biografía"
             return "Perfil no encontrado"
-        else:
-            print(f"Diagnóstico Apify - Error: {r.text}")
-            return "Error en API"
+        return "Error en API"
     except Exception as e:
         print(f"Error de conexión con Apify: {e}")
         return "error"
@@ -77,17 +79,38 @@ def main():
             print(f"¡ALERTA en {red}!")
             alertas_detectadas.append(red)
 
+    # 1. Enviar alertas si hay riesgo
     if alertas_detectadas:
         alerta = {
             "id_niño": id_niño,
             "red_social": ", ".join(alertas_detectadas),
             "tipo_riesgo": "Posible ciberacoso detectado",
-            "fecha": "2026-10-20T12:00:00Z"
+            "fecha": datetime.now(timezone.utc).isoformat()
         }
         r = requests.post(VERCEL_WEBHOOK, json=alerta)
         print("Alerta enviada a Vercel:", r.status_code)
     else:
-        print("Perfiles seguros. No se envía alerta.")
+        print("Perfiles seguros. No se envía alerta de riesgo.")
+
+    # 2. Reportar finalización a Bilt (Para encender el semáforo)
+    print("Reportando estado final a Bilt...")
+    fecha_utc = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    status_bilt = {
+        "id_niño": id_niño,
+        "fecha": fecha_utc,
+        "sin_riesgos": len(alertas_detectadas) == 0
+    }
+    
+    if RADAR_ANALISIS_WEBHOOK and RADAR_WEBHOOK_SECRET:
+        headers_bilt = {
+            "Content-Type": "application/json",
+            "x-radar-secret": RADAR_WEBHOOK_SECRET
+        }
+        try:
+            rb = requests.post(RADAR_ANALISIS_WEBHOOK, json=status_bilt, headers=headers_bilt, timeout=10)
+            print("Confirmación enviada a Bilt:", rb.status_code, rb.text)
+        except Exception as e:
+            print("Error al reportar a Bilt:", e)
 
 if __name__ == "__main__":
     main()
