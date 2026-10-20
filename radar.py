@@ -64,12 +64,11 @@ def main():
     except:
         datos = {}
     
-    # Valores por defecto para prueba manual en GitHub
     if not datos:
         print("Ejecución manual detectada. Usando valores de prueba.")
         datos = {
-            "id_niño": "12345678-1234-1234-1234-123456789012", # UUID de prueba
-            "instagram": "iJesusbernal" # Perfil de prueba
+            "id_niño": "12345678-1234-1234-1234-123456789012",
+            "instagram": "iJesusbernal"
         }
 
     id_niño = datos.get("id_niño", "desconocido")
@@ -92,22 +91,22 @@ def main():
             print(f"¡ALERTA en {red}!")
             alertas_detectadas.append(red)
 
-    # 1. Enviar alertas si hay riesgo
     if alertas_detectadas:
         alerta = {
             "id_niño": id_niño,
             "red_social": ", ".join(alertas_detectadas),
             "tipo_riesgo": "Posible ciberacoso detectado",
-            "fecha": datetime.now(timezone.utc).isoformat()
+            "fecha": datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
         }
         r = requests.post(VERCEL_WEBHOOK, json=alerta)
         print("Alerta enviada a Vercel:", r.status_code)
     else:
         print("Perfiles seguros. No se envía alerta de riesgo.")
 
-    # 2. Reportar finalización a Bilt
     print("Reportando estado final a Bilt...")
-    fecha_utc = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    # CORRECCIÓN AQUÍ: strftime para quitar milisegundos y dejar el formato exacto
+    fecha_utc = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    
     status_bilt = {
         "id_niño": id_niño,
         "fecha": fecha_utc,
