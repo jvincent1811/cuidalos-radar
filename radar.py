@@ -1,7 +1,6 @@
 import os
 import requests
 import json
-import re
 
 VERCEL_WEBHOOK = os.environ.get("VERCEL_ALERT_WEBHOOK")
 RADAR_PAYLOAD = os.environ.get("RADAR_PAYLOAD", "{}")
@@ -31,12 +30,15 @@ def analizar_texto(texto):
 
 def obtener_biografia_instagram(usuario):
     print(f"Extrayendo perfil real de Instagram: {usuario}")
-    # ESTA ES LA MAGIA: Usamos la API interna que usa la app de Instagram
+    
+    # ESTA ES LA MAGIA: Usamos la API interna que usa la app de Instagram en tu celular.
+    # No leemos la página web, le pedimos los datos a su servidor directo.
     url = f"https://i.instagram.com/api/v1/users/web_profile_info/?username={usuario}"
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'x-ig-app-id': '936619743392459' # ID público de Instagram Web
+        'x-ig-app-id': '936619743392459' # ID público que usa la app oficial
     }
+    
     try:
         r = requests.get(url, headers=headers, timeout=10)
         if r.status_code == 200:
