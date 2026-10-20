@@ -19,11 +19,12 @@ jobs:
         with:
           python-version: '3.9'
           
-      - name: Instalar dependencias (IA y Redes)
-        run: pip install requests transformers torch
+      - name: Instalar dependencias ligeras
+        run: pip install requests
         
       - name: Ejecutar el Radar
         env:
           RADAR_PAYLOAD: ${{ toJson(github.event.client_payload) }}
           VERCEL_ALERT_WEBHOOK: ${{ secrets.VERCEL_ALERT_WEBHOOK }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: python radar.py
