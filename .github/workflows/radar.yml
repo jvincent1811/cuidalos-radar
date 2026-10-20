@@ -1,9 +1,11 @@
 name: Ejecutar Radar de Cuidalos
 
 on:
-  workflow_dispatch: # Permite ejecutarlo manualmente
+  workflow_dispatch: 
+  repository_dispatch:
+    types: [radar_trigger]
   schedule:
-    - cron: '0 8 * * *' # Se ejecuta todos los días a las 8:00 AM
+    - cron: '0 8 * * *'
 
 jobs:
   analizar_perfiles:
@@ -17,11 +19,11 @@ jobs:
         with:
           python-version: '3.9'
           
-      - name: Instalar dependencias
-        run: pip install requests
+      - name: Instalar dependencias (IA y Redes)
+        run: pip install requests transformers torch
         
       - name: Ejecutar el Radar
         env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          RADAR_PAYLOAD: ${{ toJson(github.event.client_payload) }}
           VERCEL_ALERT_WEBHOOK: ${{ secrets.VERCEL_ALERT_WEBHOOK }}
         run: python radar.py
