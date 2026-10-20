@@ -2,11 +2,10 @@ import os
 import requests
 import json
 import re
-from transformers import pipeline
 
-# 1. Configuración
 VERCEL_WEBHOOK = os.environ.get("VERCEL_ALERT_WEBHOOK")
 RADAR_PAYLOAD = os.environ.get("RADAR_PAYLOAD", "{}")
+HF_TOKEN = os.environ.get("HF_TOKEN") # Tu token de Hugging Face
 
 def obtener_biografia(usuario):
     print(f"Buscando perfil publico de: {usuario}")
@@ -15,7 +14,6 @@ def obtener_biografia(usuario):
     
     try:
         response = requests.get(url, headers=headers, timeout=10)
-        # Extraemos la biografía desde la etiqueta meta de Instagram
         match = re.search(r'<meta property="og:description" content="([^"]*)"', response.text)
         if match:
             return match.group(1)
@@ -23,6 +21,19 @@ def obtener_biografia(usuario):
     except Exception as e:
         print(f"Error de red: {e}")
         return "Error al conectar con la red social"
+
+def analizar_con_hf(texto):
+    print("Analizando con IA (Hugging Face API)...")
+    # Usamos un modelo ligero de toxicidad en español
+    API_URL = "https://api-inference.huggingface.co/models/pysentimiento/robertuito-hate-speech"
+    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+    
+    try:
+        response = requests.post(API_URL, headers=headers, json={"inputs": texto}, timeout=10)
+        return response.json()
+    except Exception as e:
+        print(f"Error en IA: {e}")
+        return [{"label": "SAFE", "score": 1.0}]
 
 def main():
     datos = json.loads(RADAR_PAYLOAD)
@@ -33,30 +44,31 @@ def main():
         print("No se envió usuario de Instagram.")
         return
 
-    # 2. Obtener texto real del perfil
     biografia = obtener_biografia(usuario_ig)
     print(f"Biografía extraída: {biografia}")
 
-    # 3. FALLBACK PARA PRUEBA (Si Instagram bloquea, usamos este texto)
+    # Si Instagram bloquea, usamos texto de prueba
     if "no disponible" in biografia or "Error" in biografia:
-        print("Instagram bloqueó la lectura. Usando texto de prueba para validar la IA...")
+        print("Instagram bloqueó la lectura. Usando texto de prueba...")
         biografia = "Hola, odio a todos en mi escuela y voy a pelear con ellos."
 
-    # 4. Análisis con IA Local (Hugging Face)
-    print("Cargando modelo de IA de Hugging Face (Ciberacoso)...")
-    classifier = pipeline("text-classification", model="JonatanGk/roberta-base-bne-finetuned-cyberbullying-spanish")
-    
-    resultado = classifier(biografia)[0]
-    print(f"Resultado de IA: {resultado['label']} (Probabilidad: {resultado['score']:.2f})")
+    resultado = analizar_con_hf(biografia)
+    print(f"Resultado de IA: {resultado}")
 
-    # 5. Enviar alerta a Vercel si hay riesgo
-    # CORRECCIÓN: Si la etiqueta NO es "not_cyberbullying" y la probabilidad es alta, disparamos la alerta.
-    etiqueta = resultado['label'].lower()
-    if "not" not in etiqueta and "safe" not in etiqueta and resultado['score'] > 0.50:
+    # Si el modelo detecta toxicidad alta (HATE o OFFENSIVE)
+    es_riesgo = False
+    if isinstance(resultado, list) and len(resultado) > 0:
+        # La API de pysentimiento devuelve etiquetas como HATE o NO_HATE
+        etiqueta = resultado[0].get('label', '').lower()
+        score = resultado[0].get('score', 0)
+        if "hate" in etiqueta and "no" not in etiqueta and score > 0.5:
+            es_riesgo = True
+
+    if es_riesgo:
         alerta = {
             "id_niño": id_niño,
             "red_social": "Instagram",
-            "tipo_riesgo": f"Posible ciberacoso ({resultado['label']})",
+            "tipo_riesgo": "Posible ciberacoso detectado",
             "fecha": "2026-10-20T12:00:00Z"
         }
         r = requests.post(VERCEL_WEBHOOK, json=alerta)
