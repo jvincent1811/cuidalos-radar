@@ -8,7 +8,7 @@ HF_TOKEN = os.environ.get("HF_TOKEN")
 APIFY_TOKEN = os.environ.get("APIFY_TOKEN")
 
 def analizar_texto(texto):
-    if not texto or texto == "no disponible": return False
+    if not texto or texto == "no disponible" or texto == "error": return False
     
     print(f"Analizando texto con IA: '{texto[:50]}...'")
     API_URL = "https://router.huggingface.co/hf-inference/models/tanaos/tanaos-guardrail-spanish"
@@ -32,10 +32,11 @@ def analizar_texto(texto):
 def obtener_biografia_instagram(usuario):
     print(f"Extrayendo perfil real de Instagram: {usuario} (Usando Apify)")
     
-    # Usamos directUrls que es el formato estándar de Apify
     url_run = "https://api.apify.com/v2/acts/apify~instagram-profile-scraper/run-sync-get-dataset-items"
     headers = {"Authorization": f"Bearer {APIFY_TOKEN}", "Content-Type": "application/json"}
-    payload = {"directUrls": [f"https://www.instagram.com/{usuario}/"]}
+    
+    # CORRECCIÓN: Apify requiere el campo "usernames" (en plural y como lista)
+    payload = {"usernames": [usuario]}
     
     try:
         r = requests.post(url_run, headers=headers, json=payload, timeout=60)
