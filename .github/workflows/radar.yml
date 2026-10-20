@@ -27,4 +27,5 @@ jobs:
           RADAR_PAYLOAD: ${{ toJson(github.event.client_payload) }}
           VERCEL_ALERT_WEBHOOK: ${{ secrets.VERCEL_ALERT_WEBHOOK }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          PROXY_URL: ${{ secrets.PROXY_URL }}
         run: python radar.py
