@@ -59,11 +59,24 @@ def obtener_biografia_instagram(usuario):
         return "error"
 
 def main():
-    datos = json.loads(RADAR_PAYLOAD)
+    try:
+        datos = json.loads(RADAR_PAYLOAD) if RADAR_PAYLOAD else {}
+    except:
+        datos = {}
+    
+    # Valores por defecto para prueba manual en GitHub
+    if not datos:
+        print("Ejecución manual detectada. Usando valores de prueba.")
+        datos = {
+            "id_niño": "12345678-1234-1234-1234-123456789012", # UUID de prueba
+            "instagram": "iJesusbernal" # Perfil de prueba
+        }
+
     id_niño = datos.get("id_niño", "desconocido")
+    usuario_ig = datos.get("instagram", "")
     
     redes = {
-        "Instagram": datos.get("instagram")
+        "Instagram": usuario_ig
     }
 
     alertas_detectadas = []
@@ -92,7 +105,7 @@ def main():
     else:
         print("Perfiles seguros. No se envía alerta de riesgo.")
 
-    # 2. Reportar finalización a Bilt (Para encender el semáforo)
+    # 2. Reportar finalización a Bilt
     print("Reportando estado final a Bilt...")
     fecha_utc = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     status_bilt = {
@@ -111,6 +124,8 @@ def main():
             print("Confirmación enviada a Bilt:", rb.status_code, rb.text)
         except Exception as e:
             print("Error al reportar a Bilt:", e)
+    else:
+        print("Faltan secretos de Bilt. No se pudo reportar.")
 
 if __name__ == "__main__":
     main()
