@@ -28,4 +28,6 @@ jobs:
           VERCEL_ALERT_WEBHOOK: ${{ secrets.VERCEL_ALERT_WEBHOOK }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+          RADAR_ANALISIS_WEBHOOK: ${{ secrets.RADAR_ANALISIS_WEBHOOK }}
+          RADAR_WEBHOOK_SECRET: ${{ secrets.RADAR_WEBHOOK_SECRET }}
         run: python radar.py
