@@ -1,7 +1,6 @@
 import os
 import requests
 import json
-import time
 
 VERCEL_WEBHOOK = os.environ.get("VERCEL_ALERT_WEBHOOK")
 RADAR_PAYLOAD = os.environ.get("RADAR_PAYLOAD", "{}")
@@ -33,22 +32,27 @@ def analizar_texto(texto):
 def obtener_biografia_instagram(usuario):
     print(f"Extrayendo perfil real de Instagram: {usuario} (Usando Apify)")
     
-    # Lanzamos el "Actor" de Apify para Instagram
+    # Usamos directUrls que es el formato estándar de Apify
     url_run = "https://api.apify.com/v2/acts/apify~instagram-profile-scraper/run-sync-get-dataset-items"
     headers = {"Authorization": f"Bearer {APIFY_TOKEN}", "Content-Type": "application/json"}
-    payload = {"usernames": [usuario]}
+    payload = {"directUrls": [f"https://www.instagram.com/{usuario}/"]}
     
     try:
         r = requests.post(url_run, headers=headers, json=payload, timeout=60)
+        print(f"Diagnóstico Apify - Status: {r.status_code}")
+        
         if r.status_code in [200, 201]:
             data = r.json()
-            if data and len(data) > 0:
-                # Apify nos devuelve la biografía en el campo 'biography'
+            print(f"Diagnóstico Apify - Elementos recibidos: {len(data)}")
+            if isinstance(data, list) and len(data) > 0:
                 bio = data[0].get('biography', '')
-                return bio if bio else "no disponible"
-        return "no disponible"
+                return bio if bio else "Perfil sin biografía"
+            return "Perfil no encontrado"
+        else:
+            print(f"Diagnóstico Apify - Error: {r.text}")
+            return "Error en API"
     except Exception as e:
-        print(f"Error de Apify: {e}")
+        print(f"Error de conexión con Apify: {e}")
         return "error"
 
 def main():
@@ -56,8 +60,7 @@ def main():
     id_niño = datos.get("id_niño", "desconocido")
     
     redes = {
-        "Instagram": datos.get("instagram"),
-        "Roblox": datos.get("roblox")
+        "Instagram": datos.get("instagram")
     }
 
     alertas_detectadas = []
@@ -66,21 +69,7 @@ def main():
         if not usuario: continue
         print(f"--- Revisando {red}: {usuario} ---")
         
-        biografia = ""
-        if red == "Instagram":
-            biografia = obtener_biografia_instagram(usuario)
-        elif red == "Roblox":
-            # El código de Roblox que ya teníamos (ese sí funciona gratis)
-            try:
-                res = requests.post("https://users.roblox.com/v1/usernames/users", json={"usernames": [usuario], "excludeBannedUsers": True}, timeout=10)
-                data = res.json()
-                if data.get("data"):
-                    user_id = data["data"][0]["id"]
-                    desc_res = requests.get(f"https://users.roblox.com/v1/users/{user_id}", timeout=10)
-                    biografia = desc_res.json().get("description", "")
-            except:
-                biografia = "error"
-        
+        biografia = obtener_biografia_instagram(usuario)
         print(f"Biografía extraída: {biografia}")
 
         if analizar_texto(biografia):
