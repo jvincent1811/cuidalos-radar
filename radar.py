@@ -1,55 +1,66 @@
 import os
 import requests
+import json
+import re
+from transformers import pipeline
 
 # 1. Configuración
-HF_TOKEN = os.environ.get("HF_TOKEN")
 VERCEL_WEBHOOK = os.environ.get("VERCEL_ALERT_WEBHOOK")
+RADAR_PAYLOAD = os.environ.get("RADAR_PAYLOAD", "{}")
 
-# Datos de prueba
-id_niño = "niño_123"
-
-def analizar_con_huggingface(texto):
-    print(f"Analizando texto: {texto}")
-    API_URL = "https://router.huggingface.co/hf-inference/models/tanaos/tanaos-guardrail-spanish"
-    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
-    payload = {"inputs": texto}
+def obtener_biografia(usuario):
+    print(f"Buscando perfil publico de: {usuario}")
+    url = f"https://www.instagram.com/{usuario}/"
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
     
     try:
-        response = requests.post(API_URL, headers=headers, json=payload, timeout=10)
-        data = response.json()
-        # Si Hugging Face responde con un error, usamos el plan B
-        if isinstance(data, dict) and "error" in data:
-            print("Hugging Face falló. Usando análisis de palabras clave...")
-            return revisar_palabras(texto)
-        return data
+        response = requests.get(url, headers=headers, timeout=10)
+        # Extraemos la biografía desde la etiqueta meta de Instagram
+        match = re.search(r'<meta property="og:description" content="([^"]*)"', response.text)
+        if match:
+            return match.group(1)
+        return "Biografía no disponible (Cuenta privada o perfil inexistente)"
     except Exception as e:
-        print("Error de conexión con IA. Usando análisis de palabras clave...")
-        return revisar_palabras(texto)
-
-def revisar_palabras(texto):
-    texto = texto.lower()
-    palabras_riesgo = ["odio", "matar", "tonto", "feo", "golpear", "muerte"]
-    for palabra in palabras_riesgo:
-        if palabra in texto:
-            return [{"label": "TOXIC", "score": 0.9}]
-    return [{"label": "SAFE", "score": 0.99}]
+        print(f"Error de red: {e}")
+        return "Error al conectar con la red social"
 
 def main():
-    bio_simulada = "Hola, me gusta el futbol y odio a todos"
+    datos = json.loads(RADAR_PAYLOAD)
+    id_niño = datos.get("id_niño", "desconocido")
+    usuario_ig = datos.get("instagram", "")
     
-    resultado = analizar_con_huggingface(bio_simulada)
-    print("Resultado de la IA:", resultado)
+    if not usuario_ig:
+        print("No se envió usuario de Instagram.")
+        return
 
-    # El radar detecta riesgo y envía la alerta
-    alerta = {
-        "id_niño": id_niño,
-        "red_social": "Instagram",
-        "tipo_riesgo": "Lenguaje sospechoso detectado",
-        "fecha": "2026-10-19T12:00:00Z"
-    }
+    # 2. Obtener texto real del perfil
+    biografia = obtener_biografia(usuario_ig)
+    print(f"Biografía extraída: {biografia}")
+
+    # Si no hay biografía, terminamos
+    if "no disponible" in biografia or "Error" in biografia:
+        print("No se pudo analizar el perfil.")
+        return
+
+    # 3. Análisis con IA Local (Hugging Face)
+    print("Cargando modelo de IA de Hugging Face (Ciberacoso)...")
+    classifier = pipeline("text-classification", model="JonatanGk/roberta-base-bne-finetuned-cyberbullying-spanish")
     
-    r = requests.post(VERCEL_WEBHOOK, json=alerta)
-    print("Alerta enviada a Vercel:", r.status_code)
+    resultado = classifier(biografia)[0]
+    print(f"Resultado de IA: {resultado['label']} (Probabilidad: {resultado['score']:.2f})")
+
+    # El modelo devuelve LABEL_1 para riesgo, LABEL_0 para seguro
+    if resultado['label'] == "LABEL_1" and resultado['score'] > 0.50:
+        alerta = {
+            "id_niño": id_niño,
+            "red_social": "Instagram",
+            "tipo_riesgo": "Posible ciberacoso detectado en biografía",
+            "fecha": "2026-10-19T12:00:00Z"
+        }
+        r = requests.post(VERCEL_WEBHOOK, json=alerta)
+        print("Alerta enviada a Vercel:", r.status_code)
+    else:
+        print("Perfil seguro. No se envía alerta.")
 
 if __name__ == "__main__":
     main()
