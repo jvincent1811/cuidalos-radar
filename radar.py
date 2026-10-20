@@ -44,19 +44,19 @@ def main():
 
     # 4. Análisis con IA Local (Hugging Face)
     print("Cargando modelo de IA de Hugging Face (Ciberacoso)...")
-    # Este es el modelo específico para ciberacoso en español
     classifier = pipeline("text-classification", model="JonatanGk/roberta-base-bne-finetuned-cyberbullying-spanish")
     
     resultado = classifier(biografia)[0]
     print(f"Resultado de IA: {resultado['label']} (Probabilidad: {resultado['score']:.2f})")
 
     # 5. Enviar alerta a Vercel si hay riesgo
-    # El modelo devuelve LABEL_1 si detecta acoso, LABEL_0 si es seguro
-    if resultado['label'] == "LABEL_1" and resultado['score'] > 0.50:
+    # CORRECCIÓN: Si la etiqueta NO es "not_cyberbullying" y la probabilidad es alta, disparamos la alerta.
+    etiqueta = resultado['label'].lower()
+    if "not" not in etiqueta and "safe" not in etiqueta and resultado['score'] > 0.50:
         alerta = {
             "id_niño": id_niño,
             "red_social": "Instagram",
-            "tipo_riesgo": "Posible ciberacoso detectado en biografía",
+            "tipo_riesgo": f"Posible ciberacoso ({resultado['label']})",
             "fecha": "2026-10-20T12:00:00Z"
         }
         r = requests.post(VERCEL_WEBHOOK, json=alerta)
