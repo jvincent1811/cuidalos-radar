@@ -5,35 +5,36 @@ import re
 
 VERCEL_WEBHOOK = os.environ.get("VERCEL_ALERT_WEBHOOK")
 RADAR_PAYLOAD = os.environ.get("RADAR_PAYLOAD", "{}")
-HF_TOKEN = os.environ.get("HF_TOKEN") # Tu token de Hugging Face
+HF_TOKEN = os.environ.get("HF_TOKEN")
 
 def obtener_biografia(usuario):
     print(f"Buscando perfil publico de: {usuario}")
     url = f"https://www.instagram.com/{usuario}/"
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
-    
     try:
         response = requests.get(url, headers=headers, timeout=10)
         match = re.search(r'<meta property="og:description" content="([^"]*)"', response.text)
         if match:
             return match.group(1)
-        return "Biografía no disponible (Cuenta privada o perfil inexistente)"
-    except Exception as e:
-        print(f"Error de red: {e}")
-        return "Error al conectar con la red social"
+        return "no disponible"
+    except Exception:
+        return "Error"
 
 def analizar_con_hf(texto):
     print("Analizando con IA (Hugging Face API)...")
-    # Usamos un modelo ligero de toxicidad en español
-    API_URL = "https://api-inference.huggingface.co/models/pysentimiento/robertuito-hate-speech"
+    # URL CORREGIDA (nuevo router de Hugging Face)
+    API_URL = "https://router.huggingface.co/hf-inference/models/tanaos/tanaos-guardrail-spanish"
     headers = {"Authorization": f"Bearer {HF_TOKEN}"}
-    
     try:
         response = requests.post(API_URL, headers=headers, json={"inputs": texto}, timeout=10)
-        return response.json()
+        data = response.json()
+        if isinstance(data, dict) and "error" in data:
+            print("Error API HF:", data["error"])
+            return None
+        return data
     except Exception as e:
-        print(f"Error en IA: {e}")
-        return [{"label": "SAFE", "score": 1.0}]
+        print(f"Excepción HF: {e}")
+        return None
 
 def main():
     datos = json.loads(RADAR_PAYLOAD)
@@ -47,21 +48,26 @@ def main():
     biografia = obtener_biografia(usuario_ig)
     print(f"Biografía extraída: {biografia}")
 
-    # Si Instagram bloquea, usamos texto de prueba
     if "no disponible" in biografia or "Error" in biografia:
         print("Instagram bloqueó la lectura. Usando texto de prueba...")
         biografia = "Hola, odio a todos en mi escuela y voy a pelear con ellos."
 
     resultado = analizar_con_hf(biografia)
-    print(f"Resultado de IA: {resultado}")
-
-    # Si el modelo detecta toxicidad alta (HATE o OFFENSIVE)
+    
     es_riesgo = False
-    if isinstance(resultado, list) and len(resultado) > 0:
-        # La API de pysentimiento devuelve etiquetas como HATE o NO_HATE
-        etiqueta = resultado[0].get('label', '').lower()
-        score = resultado[0].get('score', 0)
-        if "hate" in etiqueta and "no" not in etiqueta and score > 0.5:
+    
+    if resultado:
+        print(f"Resultado de IA: {resultado}")
+        if isinstance(resultado, list) and len(resultado) > 0:
+            etiqueta = resultado[0].get('label', '').lower()
+            score = resultado[0].get('score', 0)
+            if ("unsafe" in etiqueta or "toxic" in etiqueta or "hate" in etiqueta) and score > 0.5:
+                es_riesgo = True
+    else:
+        print("Usando Plan B (Palabras clave) porque la IA falló...")
+        texto_lower = biografia.lower()
+        palabras = ["odio", "matar", "pelear", "tonto", "muerte", "puta", "pendejo"]
+        if any(p in texto_lower for p in palabras):
             es_riesgo = True
 
     if es_riesgo:
