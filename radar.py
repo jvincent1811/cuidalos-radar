@@ -1,11 +1,12 @@
 import os
 import requests
 import json
-import re
+import time
 
 VERCEL_WEBHOOK = os.environ.get("VERCEL_ALERT_WEBHOOK")
 RADAR_PAYLOAD = os.environ.get("RADAR_PAYLOAD", "{}")
 HF_TOKEN = os.environ.get("HF_TOKEN")
+APIFY_TOKEN = os.environ.get("APIFY_TOKEN")
 
 def analizar_texto(texto):
     if not texto or texto == "no disponible": return False
@@ -29,30 +30,25 @@ def analizar_texto(texto):
     palabras_riesgo = ["odio", "matar", "pelear", "tonto", "muerte", "puta", "pendejo", "gorda", "feo"]
     return any(p in texto.lower() for p in palabras_riesgo)
 
-def obtener_biografia_real(usuario, red):
-    print(f"Extrayendo perfil real de {red.capitalize()}: {usuario} (Usando Jina AI Reader)")
+def obtener_biografia_instagram(usuario):
+    print(f"Extrayendo perfil real de Instagram: {usuario} (Usando Apify)")
     
-    # Jina AI lee la página web desde sus servidores, evadiendo bloqueos
-    if red.lower() == "instagram":
-        url = f"https://r.jina.ai/https://www.instagram.com/{usuario}/"
-    elif red.lower() == "tiktok":
-        url = f"https://r.jina.ai/https://www.tiktok.com/@{usuario}"
-    elif red.lower() == "facebook":
-        url = f"https://r.jina.ai/https://www.facebook.com/{usuario}"
-    else:
-        return "no disponible"
-
+    # Lanzamos el "Actor" de Apify para Instagram
+    url_run = "https://api.apify.com/v2/acts/apify~instagram-profile-scraper/run-sync-get-dataset-items"
+    headers = {"Authorization": f"Bearer {APIFY_TOKEN}", "Content-Type": "application/json"}
+    payload = {"usernames": [usuario]}
+    
     try:
-        # Jina nos devuelve el texto limpio de la página
-        r = requests.get(url, timeout=20)
-        if r.status_code == 200:
-            # Buscamos la etiqueta de descripción que es donde va la biografía
-            match = re.search(r'(?:Description:|og:description.*?content=")([^"\n]+)', r.text, re.IGNORECASE)
-            if match:
-                return match.group(1).strip()
+        r = requests.post(url_run, headers=headers, json=payload, timeout=60)
+        if r.status_code in [200, 201]:
+            data = r.json()
+            if data and len(data) > 0:
+                # Apify nos devuelve la biografía en el campo 'biography'
+                bio = data[0].get('biography', '')
+                return bio if bio else "no disponible"
         return "no disponible"
     except Exception as e:
-        print(f"Error de conexión con Jina: {e}")
+        print(f"Error de Apify: {e}")
         return "error"
 
 def main():
@@ -61,8 +57,7 @@ def main():
     
     redes = {
         "Instagram": datos.get("instagram"),
-        "TikTok": datos.get("tiktok"),
-        "Facebook": datos.get("facebook")
+        "Roblox": datos.get("roblox")
     }
 
     alertas_detectadas = []
@@ -71,7 +66,21 @@ def main():
         if not usuario: continue
         print(f"--- Revisando {red}: {usuario} ---")
         
-        biografia = obtener_biografia_real(usuario, red)
+        biografia = ""
+        if red == "Instagram":
+            biografia = obtener_biografia_instagram(usuario)
+        elif red == "Roblox":
+            # El código de Roblox que ya teníamos (ese sí funciona gratis)
+            try:
+                res = requests.post("https://users.roblox.com/v1/usernames/users", json={"usernames": [usuario], "excludeBannedUsers": True}, timeout=10)
+                data = res.json()
+                if data.get("data"):
+                    user_id = data["data"][0]["id"]
+                    desc_res = requests.get(f"https://users.roblox.com/v1/users/{user_id}", timeout=10)
+                    biografia = desc_res.json().get("description", "")
+            except:
+                biografia = "error"
+        
         print(f"Biografía extraída: {biografia}")
 
         if analizar_texto(biografia):
