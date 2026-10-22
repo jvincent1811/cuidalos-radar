@@ -33,31 +33,28 @@ def analizar_texto(texto):
     palabras_riesgo = ["odio", "matar", "pelear", "tonto", "muerte", "puta", "pendejo", "gorda", "feo"]
     return any(p in texto.lower() for p in palabras_riesgo)
 
-def obtener_biografia_instagram(usuario):
+def revisar_instagram(usuario):
     print(f"Extrayendo perfil real de Instagram: {usuario} (Usando Apify)")
-    
     url_run = "https://api.apify.com/v2/acts/apify~instagram-profile-scraper/run-sync-get-dataset-items"
     headers = {"Authorization": f"Bearer {APIFY_TOKEN}", "Content-Type": "application/json"}
     payload = {"usernames": [usuario]}
     
     try:
         r = requests.post(url_run, headers=headers, json=payload, timeout=60)
-        print(f"Diagnóstico Apify - Status: {r.status_code}")
-        
         if r.status_code in [200, 201]:
             data = r.json()
-            print(f"Diagnóstico Apify - Elementos recibidos: {len(data)}")
             if isinstance(data, list) and len(data) > 0:
                 perfil = data[0]
-                bio = perfil.get('biography') or perfil.get('bio') or perfil.get('description')
-                if bio:
-                    return bio
-                return "Perfil sin biografía"
-            return "Perfil no encontrado"
-        return "Error en API"
+                # Extraemos si es privado
+                es_privado = perfil.get('is_private', False)
+                bio = perfil.get('biography') or perfil.get('bio') or perfil.get('description') or ""
+                
+                estado = "privado" if es_privado else "publico"
+                return {"red": "Instagram", "estado": estado, "biografia": bio}
+        return {"red": "Instagram", "estado": "no_encontrado", "biografia": ""}
     except Exception as e:
         print(f"Error de conexión con Apify: {e}")
-        return "error"
+        return {"red": "Instagram", "estado": "error", "biografia": ""}
 
 def main():
     try:
@@ -65,7 +62,6 @@ def main():
     except:
         datos = {}
     
-    # Si no hay datos (ejecución manual sin payload), nos detenemos para no gastar créditos
     if not datos or not datos.get("id_niño"):
         print("No se recibieron datos válidos desde Bilt. Cancelando análisis para ahorrar créditos.")
         return
@@ -73,22 +69,27 @@ def main():
     id_niño = datos.get("id_niño")
     usuario_ig = datos.get("instagram", "")
     
-    redes = {
-        "Instagram": usuario_ig
-    }
-
+    resultados_redes = []
     alertas_detectadas = []
 
-    for red, usuario in redes.items():
-        if not usuario: continue
-        print(f"--- Revisando {red}: {usuario} ---")
+    if usuario_ig:
+        print(f"--- Revisando Instagram: {usuario_ig} ---")
+        resultado = revisar_instagram(usuario_ig)
         
-        biografia = obtener_biografia_instagram(usuario)
-        print(f"Biografía extraída: {biografia}")
-
-        if analizar_texto(biografia):
-            print(f"¡ALERTA en {red}!")
-            alertas_detectadas.append(red)
+        # Solo analizamos si es público y tiene biografía
+        if resultado["estado"] == "publico" and resultado["biografia"]:
+            print(f"Biografía extraída: {resultado['biografia']}")
+            if analizar_texto(resultado["biografia"]):
+                print("¡ALERTA en Instagram!")
+                alertas_detectadas.append("Instagram")
+                resultado["riesgo"] = True
+            else:
+                resultado["riesgo"] = False
+        else:
+            print(f"Perfil {resultado['estado']} o sin biografía. No se analiza texto.")
+            resultado["riesgo"] = False
+            
+        resultados_redes.append(resultado)
 
     # 1. Enviar alertas si hay riesgo
     if alertas_detectadas:
@@ -103,14 +104,15 @@ def main():
     else:
         print("Perfiles seguros. No se envía alerta de riesgo.")
 
-    # 2. Reportar finalización a Bilt (Para el semáforo)
+    # 2. Reportar finalización a Bilt (Con el detalle por red)
     print("Reportando estado final a Bilt...")
     fecha_utc = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     
     status_bilt = {
         "id_niño": id_niño,
         "fecha": fecha_utc,
-        "sin_riesgos": len(alertas_detectadas) == 0
+        "sin_riesgos": len(alertas_detectadas) == 0,
+        "redes": resultados_redes # <-- AQUÍ ENVIAMOS EL DETALLE POR RED
     }
     
     if RADAR_ANALISIS_WEBHOOK and RADAR_WEBHOOK_SECRET:
